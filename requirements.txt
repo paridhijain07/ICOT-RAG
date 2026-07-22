@@ -1,0 +1,13 @@
+pandas
+numpy
+sentence-transformers
+chromadb
+scikit-learn
+matplotlib
+seaborn
+langchain
+langchain-community
+python-dotenv
+jupyter
+requests
+google-generativeai
