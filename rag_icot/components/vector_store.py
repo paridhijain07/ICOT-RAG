@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import chromadb
 
 
@@ -5,8 +7,16 @@ class VectorStore:
 
     def __init__(
         self,
-        persist_directory="../artifacts/chroma_db"
+        persist_directory=None
     ):
+
+        if persist_directory is None:
+            project_root = Path(__file__).resolve().parents[2]
+            persist_directory = str(
+                project_root / "artifacts" / "chroma_db"
+            )
+
+        self.persist_directory = persist_directory
 
         self.client = chromadb.PersistentClient(
             path=persist_directory
@@ -47,12 +57,9 @@ class VectorStore:
 
             ids.append(doc["id"])
 
-            text = doc.get(
-                "description",
-                doc.get("summary", "")
-            )
+            from rag_icot.components.document_text import build_document_text
 
-            texts.append(text)
+            texts.append(build_document_text(doc))
 
             vectors.append(
                 emb.tolist()
@@ -91,15 +98,18 @@ class VectorStore:
     def search(
         self,
         query_embedding,
-        k=5
+        k=5,
+        where=None
     ):
 
-        return self.collection.query(
-
-            query_embeddings=[
+        kwargs = {
+            "query_embeddings": [
                 query_embedding.tolist()
             ],
+            "n_results": k,
+        }
 
-            n_results=k
+        if where is not None:
+            kwargs["where"] = where
 
-        )
+        return self.collection.query(**kwargs)

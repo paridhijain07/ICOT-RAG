@@ -1,53 +1,137 @@
 import os
+from collections import Counter
+
 import pandas as pd
 
 
 class DataIngestion:
 
-    def load_iot23(self, file_path):
+    def _parse_fields_header(self, file_path):
 
-        # Extract Columns
-        columns = None
-
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith("#fields"):
-
                     fields = line.strip().split("\t")[1:]
-
                     last_field = fields.pop()
+                    fields.extend(last_field.split())
+                    return fields
 
-                    last_parts = last_field.split()
+        raise ValueError(f"No #fields header found in {file_path}")
 
-                    fields.extend(last_parts)
+    def _parse_row(self, line, expected_cols):
 
-                    columns = fields
+        parts = line.strip().split("\t")
+        last_field = parts.pop()
+        parts.extend(last_field.split())
 
-                    break
+        # Zeek labeled logs append tunnel_parents/label/detailed-label
+        if len(parts) < expected_cols:
+            parts.extend(["-"] * (expected_cols - len(parts)))
 
-        # Extract Rows
+        return parts[:expected_cols]
+
+    def load_iot23(self, file_path):
+
+        columns = self._parse_fields_header(file_path)
         rows = []
 
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
+                if line.startswith("#"):
+                    continue
 
-                if not line.startswith("#"):
+                rows.append(
+                    self._parse_row(line, len(columns))
+                )
 
-                    parts = line.strip().split("\t")
+        return pd.DataFrame(rows, columns=columns)
 
-                    last_field = parts.pop()
+    def aggregate_iot23_scenario(self, file_path):
+        """Stream a labeled conn.log and return compact scenario stats.
 
-                    last_parts = last_field.split()
+        Avoids loading multi-million-row captures fully into memory.
+        """
 
-                    parts.extend(last_parts)
+        columns = self._parse_fields_header(file_path)
 
-                    rows.append(parts)
+        idx = {
+            name: columns.index(name)
+            for name in [
+                "proto",
+                "service",
+                "duration",
+                "id.orig_h",
+                "id.resp_h",
+                "detailed-label",
+            ]
+            if name in columns
+        }
 
-        # Create DataFrame
-        df = pd.DataFrame(rows, columns=columns)
+        required = [
+            "proto",
+            "service",
+            "detailed-label",
+        ]
 
-        return df
+        for name in required:
+            if name not in idx:
+                raise ValueError(
+                    f"Missing column '{name}' in {file_path}"
+                )
 
+        proto_counts = Counter()
+        service_counts = Counter()
+        label_counts = Counter()
+        source_ips = set()
+        dest_ips = set()
+
+        flow_count = 0
+        duration_sum = 0.0
+        duration_n = 0
+
+        # Cap unique-IP tracking for very large files
+        max_tracked_ips = 50000
+
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("#"):
+                    continue
+
+                parts = self._parse_row(line, len(columns))
+                flow_count += 1
+
+                proto_counts[parts[idx["proto"]]] += 1
+                service_counts[parts[idx["service"]]] += 1
+                label_counts[parts[idx["detailed-label"]]] += 1
+
+                if "duration" in idx:
+                    try:
+                        duration_sum += float(parts[idx["duration"]])
+                        duration_n += 1
+                    except ValueError:
+                        pass
+
+                if len(source_ips) < max_tracked_ips and "id.orig_h" in idx:
+                    source_ips.add(parts[idx["id.orig_h"]])
+
+                if len(dest_ips) < max_tracked_ips and "id.resp_h" in idx:
+                    dest_ips.add(parts[idx["id.resp_h"]])
+
+        avg_duration = (
+            duration_sum / duration_n
+            if duration_n
+            else 0.0
+        )
+
+        return {
+            "flow_count": flow_count,
+            "protocol_distribution": dict(proto_counts),
+            "service_distribution": dict(service_counts),
+            "label_counts": dict(label_counts),
+            "average_duration": float(round(avg_duration, 4)),
+            "unique_source_ips": len(source_ips),
+            "unique_destination_ips": len(dest_ips),
+        }
 
     def load_all_iot23(self, dataset_folder):
 

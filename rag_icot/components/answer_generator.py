@@ -1,4 +1,5 @@
 from rag_icot.components.llm import GeminiLLM
+from rag_icot.components.context_format import format_documents_for_llm
 
 
 class AnswerGenerator:
@@ -13,18 +14,7 @@ class AnswerGenerator:
         documents
     ):
 
-        context = ""
-
-        for i, doc in enumerate(documents):
-
-            context += f"""
-==============================
-Document {i+1}
-==============================
-
-{doc["text"]}
-
-"""
+        context = format_documents_for_llm(documents)
 
         prompt = f"""
 You are an expert IoT Cybersecurity Analyst.

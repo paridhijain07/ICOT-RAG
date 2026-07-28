@@ -20,20 +20,24 @@ class EmbeddingBuilder:
             normalize_embeddings=True
         )
 
-    def embed_documents(self, documents):
+    def get_embed_text(self, doc):
+        from rag_icot.components.document_text import build_document_text
 
-        embeddings = []
+        return build_document_text(doc)
 
-        for doc in documents:
+    def embed_documents(self, documents, batch_size=64):
 
-            text = doc.get(
-                "description",
-                doc.get("summary", "")
-            )
+        texts = [
+            self.get_embed_text(doc)
+            for doc in documents
+        ]
 
-            embeddings.append(
-                self.embed(text)
-            )
+        embeddings = self.model.encode(
+            texts,
+            batch_size=batch_size,
+            normalize_embeddings=True,
+            show_progress_bar=True
+        )
 
         return np.array(embeddings)
 
