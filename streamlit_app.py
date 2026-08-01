@@ -312,17 +312,27 @@ def page_demo():
     )
 
     questions = load_eval_questions()
+    categories = sorted({q.get("category", "general") for q in questions})
+    cat_choice = st.selectbox(
+        "Category filter",
+        ["All"] + categories,
+        help=f"{len(questions)} questions in the eval set",
+    )
     samples = [
         q
         for q in questions
-        if q.get("id") in {"q001", "q011", "q031", "q032", "q034"}
+        if cat_choice == "All" or q.get("category") == cat_choice
     ]
     labels = {
-        f"{q['id']}: {q['question'][:90]}{'…' if len(q['question'])>90 else ''}": q
+        f"{q['id']} [{q.get('category', '?')}]: "
+        f"{q['question'][:80]}{'…' if len(q['question']) > 80 else ''}": q
         for q in samples
     }
 
-    choice = st.selectbox("Sample question", ["(custom)"] + list(labels.keys()))
+    choice = st.selectbox(
+        f"Sample question ({len(samples)} shown)",
+        ["(custom)"] + list(labels.keys()),
+    )
     if choice == "(custom)":
         question = st.text_area(
             "Your question",
