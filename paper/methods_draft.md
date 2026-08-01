@@ -77,9 +77,10 @@ Iterative retrieval can accumulate 15–20 documents. Feeding all of them to the
 |------|-----------|-----------|
 | Vanilla RAG | Single pass, \(k=5\), unified index | None |
 | Prompt-only ICoT | None | 3-stage role CoT (analyze → expand → advice), Zeng-inspired |
+| ChatIoT-style | Per-source retrieve (MITRE / VARIoT / IoT23), merge top docs, single generate | No iteration |
 | Facet ICOT-RAG (ours) | Iterative, facet/source filters, \(T=3\) | Sufficiency JSON + filtered answer |
 
-Vanilla over the unified index is a practical stand-in for single-pass multi-source RAG (a full ChatIoT-style selector ensemble is future work).
+**ChatIoT-style** approximates a single-pass multi-retriever: \(k=3\) from each source, merge/dedupe by distance to at most 8 docs, then one generation. It does **not** include ChatIoT’s learned selector; it is a fair multi-source retrieval baseline without the ICOT loop.
 
 ---
 
@@ -87,7 +88,7 @@ Vanilla over the unified index is a practical stand-in for single-pass multi-sou
 
 ### 5.1 Dataset
 
-`iot_security_eval_v1.json`: 50 questions with category, required facets, expected sources, reference hints, and gold notes. Primary reported split: **12 multi-facet** questions.
+`iot_security_eval_v1.json`: 50 questions with category, required facets, expected sources, reference hints, and gold notes. Report **full set (n=50)** and the **multi-facet** subset (12).
 
 ### 5.2 Metrics
 
@@ -99,7 +100,8 @@ Vanilla over the unified index is a practical stand-in for single-pass multi-sou
 
 - LLM: Groq `llama-3.1-8b-instant` (temperature low for generation).  
 - Evidence prompts are length-truncated to respect API token limits.  
-- Pipeline package: `rag_icot` (modular components + `evaluation` runners).
+- Pipeline package: `rag_icot` (modular components + `evaluation` runners).  
+- Full four-way runner: `scripts/run_full_eval.py --four-way` → `artifacts/evaluation/full_four_way.json`.
 
 ---
 

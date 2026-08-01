@@ -8,6 +8,7 @@ from rag_icot.evaluation.dataset import (
 from rag_icot.evaluation.baselines import (
     run_vanilla_rag,
     run_single_pass_rag,
+    run_chatiot_style,
     run_facet_icot,
     run_prompt_only_icot,
     run_prompt_only_icot_stub,
@@ -38,6 +39,7 @@ __all__ = [
     "summarize_dataset",
     "run_vanilla_rag",
     "run_single_pass_rag",
+    "run_chatiot_style",
     "run_facet_icot",
     "run_prompt_only_icot",
     "run_prompt_only_icot_stub",
