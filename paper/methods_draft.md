@@ -20,7 +20,7 @@ A single retrieve-and-generate pass often covers only one evidence type. Prompt-
 
 | Source | Role | Index content (approx.) |
 |--------|------|-------------------------|
-| IoT-23 | Malware / traffic **behaviour** | 9 scenario-level documents (family + labelled behaviours) |
+| IoT-23 | Malware / traffic **behaviour** | 23 scenario documents + family rollups (e.g. Mirai across multiple captures) |
 | MITRE ATT&CK | **Technique** / **mitigation** | ~817 IoT/network-filtered techniques |
 | VARIoT | **Vulnerability** / **exploit** | ~500 vulns + ~494 exploits |
 

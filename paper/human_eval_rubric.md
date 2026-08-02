@@ -44,5 +44,5 @@ python scripts/analyze_human_ratings.py paper/human_eval/ratings_filled.csv
 |------|--------|
 | Rubric | Done |
 | Sample + export scripts | Done |
-| Full answers + blind sheets | Generating / run export script |
-| Ratings collected | Not started |
+| Full answers + blind sheets | **Done** (24/24, no errors) |
+| Ratings collected | Not started — give raters `sheets/*.md` + this rubric only |

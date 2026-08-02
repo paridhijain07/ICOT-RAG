@@ -1,5 +1,6 @@
 import os
 from collections import Counter
+from pathlib import Path
 
 import pandas as pd
 
@@ -92,6 +93,8 @@ class DataIngestion:
         # Cap unique-IP tracking for very large files
         max_tracked_ips = 50000
 
+        progress_every = 1_000_000
+
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith("#"):
@@ -99,6 +102,12 @@ class DataIngestion:
 
                 parts = self._parse_row(line, len(columns))
                 flow_count += 1
+
+                if flow_count % progress_every == 0:
+                    print(
+                        f"    ... {flow_count:,} flows",
+                        flush=True,
+                    )
 
                 proto_counts[parts[idx["proto"]]] += 1
                 service_counts[parts[idx["service"]]] += 1
@@ -133,20 +142,39 @@ class DataIngestion:
             "unique_destination_ips": len(dest_ips),
         }
 
+    @staticmethod
+    def find_iot23_labeled_log(scenario_dir):
+        """Locate conn.log.labeled under a scenario folder.
+
+        Handles both ``bro/conn.log.labeled`` and nested layouts
+        (e.g. honeypot captures with ``Somfy-01/bro/...``).
+        """
+
+        scenario_dir = Path(scenario_dir)
+        direct = scenario_dir / "bro" / "conn.log.labeled"
+        if direct.is_file():
+            return str(direct)
+
+        matches = sorted(scenario_dir.rglob("conn.log.labeled"))
+        if not matches:
+            return None
+        # Prefer a path that still sits under a bro/ directory
+        for path in matches:
+            if path.parent.name == "bro":
+                return str(path)
+        return str(matches[0])
+
     def load_all_iot23(self, dataset_folder):
 
         all_data = []
 
         for folder in os.listdir(dataset_folder):
 
-            scenario_path = os.path.join(
-                dataset_folder,
-                folder,
-                "bro",
-                "conn.log.labeled"
+            scenario_path = self.find_iot23_labeled_log(
+                os.path.join(dataset_folder, folder)
             )
 
-            if os.path.exists(scenario_path):
+            if scenario_path:
 
                 print(f"Loading {folder}")
 

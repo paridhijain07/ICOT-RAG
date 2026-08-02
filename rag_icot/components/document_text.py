@@ -183,14 +183,28 @@ def _iot23_text(doc: dict[str, Any]) -> str:
     scenario = doc.get("scenario") or ""
     title = doc.get("title") or ""
     summary = doc.get("summary") or doc.get("description") or ""
+    behaviours = doc.get("behaviours") or {}
+    scenarios = doc.get("scenarios") or []
 
     parts = []
     if family:
         parts.append(f"Malware family: {family}")
     if scenario:
         parts.append(f"Scenario: {scenario}")
+    if scenarios and not scenario:
+        parts.append(f"Scenarios: {', '.join(str(s) for s in scenarios)}")
     if title and title not in summary:
         parts.append(f"Title: {title}")
+    if behaviours:
+        top = ", ".join(
+            f"{label} ({count})"
+            for label, count in sorted(
+                behaviours.items(),
+                key=lambda item: int(item[1]),
+                reverse=True,
+            )[:8]
+        )
+        parts.append(f"Observed behaviours: {top}")
     if summary:
         parts.append(summary)
 

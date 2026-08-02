@@ -1,6 +1,6 @@
 # Results (Draft)
 
-> Working draft for the ICOT-RAG paper. Numbers are from frozen evaluation artifacts under `artifacts/evaluation/`. Generator: Groq `llama-3.1-8b-instant`. Knowledge base: ~1820 documents (MITRE ≈817, VARIoT ≈994, IoT-23 = 9 scenario docs).
+> Working draft for the ICOT-RAG paper. Numbers are from frozen evaluation artifacts under `artifacts/evaluation/`. Generator: Groq `llama-3.1-8b-instant`. Knowledge base: ~1837 documents (MITRE ≈817, VARIoT ≈994, IoT-23 = 23 scenario docs + 3 family rollups). *Main eval tables were frozen on the prior 9-scenario IoT-23 index; re-run four-way if claiming post-expansion numbers.*
 
 ## Status update (publishability)
 
@@ -157,7 +157,7 @@ Artifact: `llm_judge_smoke.json` (n=10 mixed categories; ICOT iter=2 + filter).
 
 ## 6. Limitations
 
-1. **KB scale.** IoT-23 has nine scenario docs; VARIoT is a capped sample; product fields remain incomplete for many vulns.  
+1. **KB scale.** IoT-23 expanded to 23 scenarios (+ family rollups); VARIoT remains a capped sample; product fields remain incomplete for many vulns.  
 2. **Eval scale.** Main three-way uses n=12; some ablations are smaller.  
 3. **LLM-as-judge** is noisy; human ratings are future work.  
 4. **Generator** is a small free-tier model with truncated evidence.  

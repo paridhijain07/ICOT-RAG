@@ -236,6 +236,30 @@ def get_pipeline():
     return RAGICOTPipeline()
 
 
+def kb_document_count() -> str:
+    """Live count from Chroma (fallback: master_documents.json)."""
+
+    try:
+        from chromadb import PersistentClient
+
+        chroma_dir = ROOT / "artifacts" / "chroma_db"
+        if chroma_dir.exists():
+            col = PersistentClient(path=str(chroma_dir)).get_collection(
+                "icot_knowledge"
+            )
+            return f"{col.count():,}"
+    except Exception:
+        pass
+
+    master = ROOT / "artifacts" / "master_documents.json"
+    if master.exists():
+        try:
+            return f"{len(json.loads(master.read_text(encoding='utf-8'))):,}"
+        except Exception:
+            pass
+    return "—"
+
+
 def page_overview():
     st.markdown('<p class="hero-brand">ICOT-RAG</p>', unsafe_allow_html=True)
     st.markdown(
@@ -245,7 +269,7 @@ def page_overview():
     )
 
     metrics = [
-        ("KB documents", "~1,820"),
+        ("KB documents", kb_document_count()),
         ("Sources", "MITRE · VARIoT · IoT-23"),
         ("Eval questions", "50"),
         ("Main claim", "Multi-facet retrieval ↑"),

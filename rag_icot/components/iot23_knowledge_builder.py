@@ -220,6 +220,80 @@ class IoT23KnowledgeBuilder:
             include_benign=include_benign
         )
 
+    def build_family_summaries(self, scenario_docs):
+        """One rollup document per malware family across scenarios.
+
+        Improves dense retrieval for family-level questions (e.g. Mirai)
+        when many captures exist for the same family.
+        """
+
+        by_family: dict[str, list] = {}
+        for doc in scenario_docs:
+            family = doc.get("malware_family") or "Unknown"
+            if str(family).lower().startswith("benign"):
+                continue
+            by_family.setdefault(family, []).append(doc)
+
+        rollups = []
+        for family in sorted(by_family):
+            docs = by_family[family]
+            if len(docs) < 2:
+                continue
+
+            behaviour_totals: dict[str, int] = {}
+            scenarios = []
+            total_flows = 0
+            for doc in sorted(docs, key=lambda d: d.get("scenario") or ""):
+                scenarios.append(doc.get("scenario"))
+                total_flows += int(doc.get("flow_count") or 0)
+                for label, count in (doc.get("behaviours") or {}).items():
+                    behaviour_totals[label] = behaviour_totals.get(
+                        label, 0
+                    ) + int(count)
+
+            top_behaviours = ", ".join(
+                f"{label} ({count} flows)"
+                for label, count in sorted(
+                    behaviour_totals.items(),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )[:10]
+            ) or "no malicious detailed-labels observed"
+
+            slug = (
+                family.lower()
+                .replace(" ", "_")
+                .replace("&", "and")
+            )
+            summary = (
+                f"IoT-23 malware family {family} appears in "
+                f"{len(scenarios)} scenarios: {', '.join(scenarios)}. "
+                f"Across these captures there are {total_flows} flows. "
+                f"Aggregated observed behaviours include: {top_behaviours}. "
+                f"This family-level evidence supports questions about "
+                f"{family} scanning, command-and-control, and "
+                f"denial-of-service patterns in IoT-23."
+            )
+
+            rollups.append(
+                {
+                    "id": f"iot23_family_{slug}",
+                    "source": "IoT23",
+                    "document_type": "traffic_behaviour_family",
+                    "scenario": ", ".join(scenarios),
+                    "scenarios": scenarios,
+                    "malware_family": family,
+                    "attack_type": family,
+                    "behaviours": behaviour_totals,
+                    "title": f"{family} — family summary ({len(scenarios)} scenarios)",
+                    "description": summary,
+                    "summary": summary,
+                    "flow_count": total_flows,
+                }
+            )
+
+        return rollups
+
     def build_by_label(self, df):
         """Legacy label-aggregated docs (kept for compatibility)."""
 
