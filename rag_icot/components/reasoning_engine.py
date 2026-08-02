@@ -1,6 +1,8 @@
 from rag_icot.components.retriever import Retriever
 from rag_icot.components.context_manager import ContextManager
 from rag_icot.components.reasoning_step import ReasoningStep
+from rag_icot.components.context_format import format_documents_for_llm
+from rag_icot.constants.evidence_facets import FACET_FILTERS
 
 
 class ReasoningEngine:
@@ -14,38 +16,68 @@ class ReasoningEngine:
         self.reasoning_step = ReasoningStep()
 
     def _build_context(self):
+        # Keep prompts under Groq free-tier TPM (~6k tokens/request)
+        return format_documents_for_llm(
+            self.context_manager.get_documents(),
+            max_docs=6,
+            max_chars=500,
+        )
 
-        context = ""
+    def _resolve_filters(self, reasoning):
+        """Map next_source / missing_facets to retriever filters."""
 
-        for doc in self.context_manager.get_documents():
+        source = reasoning.get("next_source") or None
+        missing = reasoning.get("missing_facets") or []
 
-            context += doc["text"]
+        source_to_preferred_facet = {
+            "IoT23": "behaviour",
+            "MITRE": "technique",
+            "VARIoT": "vulnerability",
+        }
 
-            context += "\n\n"
+        facet = None
+        document_type = None
 
-        return context
+        if source in source_to_preferred_facet:
+            preferred = source_to_preferred_facet[source]
+            # Prefer a missing facet that matches the chosen source
+            for candidate in missing:
+                filters = FACET_FILTERS.get(candidate, {})
+                if filters.get("source") == source:
+                    facet = candidate
+                    break
+            if facet is None:
+                facet = preferred
+        elif missing:
+            facet = missing[0]
+
+        if facet in FACET_FILTERS:
+            filters = FACET_FILTERS[facet]
+            source = filters.get("source", source)
+            document_type = filters.get("document_type")
+
+        if source not in (None, "MITRE", "VARIoT", "IoT23"):
+            source = None
+            facet = None
+            document_type = None
+
+        return source, document_type, facet
 
     def reason(
         self,
         question,
-        max_iterations=3
+        max_iterations=3,
+        k=5
     ):
-
-        # ---------------------------------------
-        # Reset context for a new question
-        # ---------------------------------------
 
         self.context_manager.clear()
 
         trace = []
 
-        # ---------------------------------------
-        # Initial Retrieval
-        # ---------------------------------------
-
+        # Initial broad retrieval
         results = self.retriever.retrieve(
             question,
-            k=5
+            k=k
         )
 
         self.context_manager.add_documents(
@@ -54,76 +86,80 @@ class ReasoningEngine:
             results["metadatas"][0]
         )
 
-        # ---------------------------------------
-        # ICOT Reasoning Loop
-        # ---------------------------------------
-
         for iteration in range(max_iterations):
 
             print("\n" + "=" * 80)
             print(f"Iteration {iteration + 1}")
             print("=" * 80)
 
+            covered = self.context_manager.covered_facets()
             context = self._build_context()
 
             reasoning = self.reasoning_step.run(
                 question,
-                context
+                context,
+                covered_facets=covered
             )
 
-            print("Thought:", reasoning["thought"])
-            print("Confidence:", reasoning["confidence"])
-            print("Enough Information:", reasoning["enough_information"])
-            print("Reason:", reasoning["reason"])
-            print("Missing Information:", reasoning["missing_information"])
-
-            # ---------------------------------------
-            # Save Reasoning Trace
-            # ---------------------------------------
+            print("Thought:", reasoning.get("thought"))
+            print("Confidence:", reasoning.get("confidence"))
+            print("Enough Information:", reasoning.get("enough_information"))
+            print("Covered Facets:", reasoning.get("covered_facets"))
+            print("Missing Facets:", reasoning.get("missing_facets"))
+            print("Next Source:", reasoning.get("next_source"))
+            print("Reason:", reasoning.get("reason"))
+            print(
+                "Missing Information:",
+                reasoning.get("missing_information")
+            )
 
             trace.append({
-
                 "iteration": iteration + 1,
-
-                "thought": reasoning["thought"],
-
-                "confidence": reasoning["confidence"],
-
-                "enough_information": reasoning["enough_information"],
-
-                "reason": reasoning["reason"],
-
-                "missing_information": reasoning["missing_information"],
-
-                "search_query": reasoning["next_search_query"],
-
-                "retrieved_document_ids": results["ids"][0],
-
-                "retrieved_document_count": len(results["ids"][0])
-
+                "thought": reasoning.get("thought"),
+                "confidence": reasoning.get("confidence"),
+                "enough_information": reasoning.get("enough_information"),
+                "reason": reasoning.get("reason"),
+                "covered_facets": reasoning.get("covered_facets"),
+                "missing_facets": reasoning.get("missing_facets"),
+                "threat_risk_analysis": reasoning.get(
+                    "threat_risk_analysis"
+                ),
+                "missing_information": reasoning.get(
+                    "missing_information"
+                ),
+                "next_source": reasoning.get("next_source"),
+                "search_query": reasoning.get("next_search_query"),
+                "retrieved_document_ids": list(results["ids"][0]),
+                "retrieved_document_count": len(results["ids"][0]),
+                "context_facets": covered,
+                "context_document_count": len(
+                    self.context_manager.get_documents()
+                ),
             })
 
-            # ---------------------------------------
-            # Stop Condition
-            # ---------------------------------------
-
-            if reasoning["enough_information"]:
-
-                print("\n✅ Enough information collected.")
-
+            if reasoning.get("enough_information"):
+                print("\nEnough information collected.")
                 break
 
-            # ---------------------------------------
-            # Retrieve More Evidence
-            # ---------------------------------------
+            search_query = reasoning.get("next_search_query") or question
 
-            search_query = reasoning["next_search_query"]
+            source, document_type, facet = self._resolve_filters(
+                reasoning
+            )
 
-            print("\n🔍 Searching:", search_query)
+            print("\nSearching:", search_query)
+            print(
+                f"Filters: source={source} "
+                f"document_type={document_type} facet={facet}"
+            )
 
             results = self.retriever.retrieve(
                 search_query,
-                k=5
+                k=k,
+                exclude_ids=self.context_manager.get_document_ids(),
+                source=source,
+                document_type=document_type,
+                facet=facet
             )
 
             self.context_manager.add_documents(
@@ -132,14 +168,8 @@ class ReasoningEngine:
                 results["metadatas"][0]
             )
 
-        # ---------------------------------------
-        # Return Final Result
-        # ---------------------------------------
-
         return {
-
             "documents": self.context_manager.get_documents(),
-
-            "trace": trace
-
+            "trace": trace,
+            "covered_facets": self.context_manager.covered_facets(),
         }

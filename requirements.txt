@@ -11,3 +11,5 @@ python-dotenv
 jupyter
 requests
 google-generativeai
+groq
+streamlit

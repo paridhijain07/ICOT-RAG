@@ -1,0 +1,79 @@
+{
+  "seed": 42,
+  "n": 24,
+  "strata": {
+    "multi_facet": 8,
+    "behaviour": 4,
+    "vulnerability": 4,
+    "technique": 3,
+    "faithfulness": 3,
+    "mitigation": 1,
+    "exploit": 1
+  },
+  "ids": [
+    "q049",
+    "q040",
+    "q032",
+    "q038",
+    "q039",
+    "q037",
+    "q031",
+    "q050",
+    "q008",
+    "q006",
+    "q003",
+    "q009",
+    "q015",
+    "q014",
+    "q013",
+    "q017",
+    "q030",
+    "q029",
+    "q021",
+    "q044",
+    "q042",
+    "q041",
+    "q025",
+    "q019"
+  ],
+  "by_category": {
+    "behaviour": [
+      "q008",
+      "q006",
+      "q003",
+      "q009"
+    ],
+    "exploit": [
+      "q019"
+    ],
+    "faithfulness": [
+      "q044",
+      "q042",
+      "q041"
+    ],
+    "mitigation": [
+      "q025"
+    ],
+    "multi_facet": [
+      "q049",
+      "q040",
+      "q032",
+      "q038",
+      "q039",
+      "q037",
+      "q031",
+      "q050"
+    ],
+    "technique": [
+      "q030",
+      "q029",
+      "q021"
+    ],
+    "vulnerability": [
+      "q015",
+      "q014",
+      "q013",
+      "q017"
+    ]
+  }
+}

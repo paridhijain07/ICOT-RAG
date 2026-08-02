@@ -43,3 +43,7 @@ chroma/
 data/raw/
 data/
 datasets/
+
+# Human-eval organizer files (method-labeled answers / blinding key)
+paper/human_eval/key_DO_NOT_SHARE.json
+paper/human_eval/answers_full.json
