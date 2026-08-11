@@ -2,9 +2,9 @@
 
 > Pivot: **journal-first** (one month). Aligns with `publishability_workflow.md` Phase 4–7, compressed.
 
-## Claim (frozen — do not overclaim)
+## Claim (align with latest n=50 run)
 
-Facet-aware iterative retrieval improves **multi-source, multi-facet evidence completeness** vs vanilla RAG and clearly beats **prompt-only ICoT**. Against ChatIoT-style multi-retriever, ICOT is competitive on retrieval and strongest on **judge win-count / explainable sufficiency**; answer-quality means are **not** automatic wins.
+Facet-aware ICOT-RAG (multi-source init + needed-facet stop + filtering) improves **multi-source / multi-facet evidence completeness** and **budgeted facet coverage (facet@6) / faithfulness** vs vanilla and ChatIoT-style, and clearly beats **prompt-only ICoT**. **Mean LLM-judge on the full set is not an automatic win** (vanilla often leads); on the multi-facet subset Facet ICOT can lead judge overall.
 
 ## Target venue (pick by Day 2)
 
@@ -23,25 +23,26 @@ Facet-aware iterative retrieval improves **multi-source, multi-facet evidence co
 | Dataset | `datasets/evaluation/iot_security_eval_v1.json` (**50** questions) |
 | Primary report | Full set + **multi_facet** subset (12) |
 | Methods | Vanilla RAG · Prompt-only ICoT · ChatIoT-style · Facet ICOT |
-| Facet ICOT | `max_iterations=3`, answer-context filter **on** |
-| Hard metrics | facet recall, source hit, keyword hit (+ **mean ± std**, paired tests) |
+| Facet ICOT | Multi-source init · needed-facet stop · `max_iterations=3` · answer-context filter **on** |
+| Hard metrics | facet recall, facet@budget (6), source hit, keyword hit, faithfulness |
 | Soft metrics | LLM-as-judge + **human** (faithfulness, usefulness, technical correctness) |
-| Journal extras | Automatic faithfulness/citation support; latency/#docs; error analysis |
-| Artifacts | `artifacts/evaluation/full_four_way.json` + human + faithfulness |
+| Journal extras | Significance (mean±std); latency/#docs; error analysis |
+| Artifacts | `artifacts/evaluation/full_four_way.json` + human summary |
 
 ## Current freeze status
 
 | Item | Status |
 |------|--------|
 | Protocol locked | Done |
-| Full 50-Q four-way | Done (`full_four_way.json`) |
+| Full 50-Q four-way (improved ICOT + expanded KB) | **Done** (`full_four_way.json`, n=50, 0 errors) |
 | Scaled ablations (iter + filter, n=12) | Done |
 | ChatIoT-style baseline | Done |
-| Methods / Results drafts | Seed done |
-| Human eval answers | **Partial** (~16/24 in `answers_full.json`) |
-| Blind sheets + ratings | **Not started** |
+| Methods / Results drafts | Updated from latest four-way |
+| Streamlit Results / Overview | Updated to `full_four_way.json` |
+| Human eval answers + sheets | **Done** (24/24) |
+| Human ratings collected | **Not started** |
 | Intro / Related Work / IEEE `.tex` | **Not started** |
-| Faithfulness metric + significance | **Not started** |
+| Significance tests | **Not started** |
 
 ---
 

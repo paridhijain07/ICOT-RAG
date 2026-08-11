@@ -48,14 +48,15 @@ Facet coverage of a document set is inferred from metadata (`source`, `document_
 
 Given question \(q\):
 
-1. **Initial retrieval** from the unified index (top-\(k\)).  
-2. For up to \(T\) iterations (\(T=3\) by default):  
-   - Build a truncated evidence view for the reasoner.  
-   - LLM **reasoning step** outputs JSON: thought, confidence, enough_information, covered/missing facets, next_source, next_search_query.  
-   - If enough → stop. Else **re-retrieve** with source/facet filters and exclude already-seen IDs.  
-3. **Answer-context filtering** selects a compact facet-balanced subset (CVE exact hits prioritized; ≤2 docs/facet; ≤6 total).  
-4. **Answer generator** produces a structured IoT security report from the filtered set.  
-5. Return answer, full retrieved docs, filtered answer docs, covered facets, and **trace**.
+1. **Infer needed facets** from the question (or eval-provided `required_facets`).  
+2. **Multi-source initial retrieval** from MITRE / VARIoT / IoT-23 (merge+dedupe to a bounded set).  
+3. For up to \(T\) iterations (\(T=3\) by default):  
+   - If all needed facets are already covered → **stop** (deterministic).  
+   - Else LLM **reasoning step** outputs JSON scoped to needed facets only.  
+   - If enough → stop. Else **re-retrieve** only for missing needed facets (source/facet filters; exclude seen IDs).  
+4. **Answer-context filtering** selects a compact facet-balanced subset (CVE exact hits prioritized; ≤2 docs/facet; ≤6 total).  
+5. **Answer generator** produces a structured IoT security report from the filtered set.  
+6. Return answer, full retrieved docs, filtered answer docs, covered facets, and **trace**.
 
 ### 3.2 Reasoning step
 

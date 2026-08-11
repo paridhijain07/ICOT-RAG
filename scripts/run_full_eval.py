@@ -83,8 +83,12 @@ def _summarize(rows: list, methods: list[str]) -> dict:
     hard_summary = {
         m: {
             "facet_recall": _avg(rows, m, "facet_recall"),
+            "facet_recall_at_budget": _avg(rows, m, "facet_recall_at_budget"),
             "keyword_hit_rate": _avg(rows, m, "keyword_hit_rate"),
             "source_hit_rate": _avg(rows, m, "source_hit_rate"),
+            "faithfulness_rate": _avg(rows, m, "faithfulness_rate"),
+            "doc_count": _avg(rows, m, "doc_count"),
+            "answer_doc_count": _avg(rows, m, "answer_doc_count"),
         }
         for m in methods
     }
@@ -119,8 +123,10 @@ def _summarize(rows: list, methods: list[str]) -> dict:
             "hard": {
                 m: {
                     "facet_recall": _avg(sub, m, "facet_recall"),
+                    "facet_recall_at_budget": _avg(sub, m, "facet_recall_at_budget"),
                     "source_hit_rate": _avg(sub, m, "source_hit_rate"),
                     "keyword_hit_rate": _avg(sub, m, "keyword_hit_rate"),
+                    "faithfulness_rate": _avg(sub, m, "faithfulness_rate"),
                 }
                 for m in methods
             },
@@ -266,8 +272,6 @@ def main() -> None:
                         reference_hints=q.reference_hints,
                     )
                     docs = run.get("answer_documents") or run.get("documents") or []
-                    if name == "facet_icot":
-                        summaries[name]["answer_doc_count"] = len(docs)
                     judges[name] = judge.score(
                         q.question,
                         run["answer"],
@@ -278,6 +282,8 @@ def main() -> None:
                     time.sleep(1.5)
                     print(
                         f"{name:18s} fac={summaries[name]['facet_recall']:.2f} "
+                        f"fac@6={summaries[name]['facet_recall_at_budget']:.2f} "
+                        f"faith={summaries[name]['faithfulness_rate']:.2f} "
                         f"src={summaries[name]['source_hit_rate']:.2f} "
                         f"judge={judges[name]['overall']:.2f}",
                         flush=True,
@@ -319,6 +325,8 @@ def main() -> None:
                 "baselines": methods,
                 "icot_max_iterations": ICOT_ITERS,
                 "answer_context_filtered": True,
+                "icot_multisource_init": True,
+                "facet_budget_docs": 6,
                 "chatiot_k_per_source": 3 if args.four_way else None,
                 "chatiot_max_docs": 8 if args.four_way else None,
                 "n_questions_target": len(questions),
