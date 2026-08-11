@@ -70,14 +70,14 @@ Facet coverage is inferred from document metadata (`source`, `document_type`).
 
 ### Pipeline steps
 
-1. **Initial retrieval** from the unified Chroma index (`icot_knowledge`)  
-2. **ICOT loop** (default up to 3 iterations):  
-   - Truncated evidence → LLM reasoner → JSON (`thought`, `confidence`, `enough_information`, covered/missing facets, `next_source`, `next_search_query`)  
-   - If not enough → re-retrieve with source/document-type filters; skip already-seen IDs  
-   - CVE-like identifiers can get exact metadata boosts  
-3. **Answer-context filtering** — facet-balanced subset (default ≤2 docs/facet, ≤6 total; CVE hits prioritized)  
-4. **Answer generation** — structured IoT security-style report from the filtered set  
-5. Return answer + full retrieved docs + filtered docs + covered facets + **trace**
+1. **Infer needed facets** for the question (or use eval-provided facets)  
+2. **Multi-source initial retrieve** from IoT-23 / MITRE / VARIoT (merge to a bounded set)  
+3. **ICOT loop** (default up to 3 iterations):  
+   - If all needed facets are already covered → **stop**  
+   - Else reasoner proposes one targeted re-retrieve for a missing needed facet only  
+4. **Answer-context filtering** — facet-balanced subset (default ≤2 docs/facet, ≤6 total; CVE hits prioritized)  
+5. **Answer generation** — structured IoT security-style report from the filtered set  
+6. Return answer + full retrieved docs + filtered docs + covered facets + **trace**
 
 Core entrypoint: `rag_icot.pipeline.rag_icot_pipeline.RAGICOTPipeline`.
 

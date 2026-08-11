@@ -1,6 +1,8 @@
 # Results (Draft)
 
-> Working draft for the ICOT-RAG paper. Numbers are from frozen evaluation artifacts under `artifacts/evaluation/`. Generator: Groq `llama-3.1-8b-instant`. Knowledge base: ~1837 documents (MITRE ≈817, VARIoT ≈994, IoT-23 = 23 scenario docs + 3 family rollups). *Main eval tables were frozen on the prior 9-scenario IoT-23 index; re-run four-way if claiming post-expansion numbers.*
+> Working draft for the ICOT-RAG paper. Numbers are from frozen evaluation artifacts under `artifacts/evaluation/`. Generator: Groq `llama-3.1-8b-instant`. Knowledge base: ~1837 documents (MITRE ≈817, VARIoT ≈994, IoT-23 = 23 scenario docs + 3 family rollups).
+
+**Primary run:** `full_four_way.json` — expanded KB + improved Facet ICOT (multi-source init, needed-facet stop, answer grounding prompt). Metrics include facet@budget (max 6) and light faithfulness.
 
 ## Status update (publishability)
 
@@ -20,9 +22,9 @@ We compare four systems on IoT cybersecurity questions:
 | **Vanilla RAG** | Single retrieve → generate over the unified Chroma index (\(k=5\)) |
 | **Prompt-only ICoT** | Zeng-style role + multi-stage chain-of-thought advice **with no retrieval** |
 | **ChatIoT-style** | Per-source retrieve (MITRE / VARIoT / IoT23), merge top docs, single generate |
-| **Facet ICOT-RAG** | Iterative retrieve–reason–retrieve with source/facet routing, `max_iterations=3`, and **answer-context filtering** |
+| **Facet ICOT-RAG** | Multi-source init → needed-facet sufficiency / targeted re-retrieve (`max_iterations=3`) + **answer-context filtering** |
 
-**Hard metrics (retrieval):** facet recall, source hit rate, keyword hit rate.  
+**Hard metrics (retrieval):** facet recall, facet recall@budget (≤6 docs), source hit rate, keyword hit rate, faithfulness (ID grounding).  
 **Soft metrics:** LLM-as-judge (1–5) on reliability, relevance, technicality, friendliness (overall = mean).
 
 Prompt-only ICoT has empty retrieval metrics by design (no documents).
@@ -31,25 +33,25 @@ Prompt-only ICoT has empty retrieval metrics by design (no documents).
 
 ## 2. Main result: full-set four-way comparison (n = 50)
 
-Artifact: `full_four_way.json`. Generator: Groq `llama-3.1-8b-instant`.
+Artifact: `full_four_way.json`. Generator: Groq `llama-3.1-8b-instant`. Improved Facet ICOT; expanded IoT-23 KB.
 
-### Table 1. Mean retrieval and judge scores (full set)
+### Table 1. Mean retrieval, faithfulness, and judge scores (full set)
 
-| Method | Facet recall ↑ | Source hit ↑ | Keyword hit ↑ | Judge overall ↑ | Judge wins |
-|--------|----------------|--------------|---------------|-----------------|------------|
-| Vanilla RAG | 0.86 | 0.87 | 0.82 | **3.17** | 11 |
-| Prompt-only ICoT | 0.00 | 0.00 | 0.00 | 1.74 | 4 |
-| ChatIoT-style | **0.97** | **1.00** | **0.89** | 3.01 | 8 |
-| Facet ICOT | 0.92 | 0.92 | 0.86 | 3.13 | **12** |
+| Method | Facet recall ↑ | Facet@6 ↑ | Source hit ↑ | Keyword hit ↑ | Faithfulness ↑ | Judge overall ↑ | Judge wins |
+|--------|----------------|-----------|--------------|---------------|----------------|-----------------|------------|
+| Vanilla RAG | 0.89 | 0.89 | 0.90 | 0.85 | 0.54 | **3.42** | **21** |
+| Prompt-only ICoT | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 1.68 | 3 |
+| ChatIoT-style | 0.97 | 0.92 | **1.00** | **0.90** | 0.86 | 2.78 | 4 |
+| Facet ICOT | **1.00** | **1.00** | **1.00** | **0.90** | **0.88** | 2.90 | 8 |
 
-*(15 judge ties.)*
+*(14 judge ties.)*
 
 ### Finding (full set)
 
 1. **Prompt-only ICoT fails** without retrieval (lowest judge; zero hard metrics).  
-2. **ChatIoT-style leads retrieval coverage** (facet / source / keyword) via per-source retrieve+merge.  
-3. **Facet ICOT is competitive** on retrieval and has the **most judge wins**, while vanilla edges mean judge overall.  
-4. Iteration alone is not enough to beat a strong multi-source single pass on every metric — position ICOT as **structured sufficiency + explainable trace**, not automatic judge dominance.
+2. **Facet ICOT leads hard coverage** (facet recall / facet@6 / source hit) and **faithfulness** after multi-source init + filtering.  
+3. **ChatIoT-style** remains strong on raw multi-source coverage but trails Facet ICOT on **facet@6** (0.92 vs 1.00) — budgeted evidence favors ICOT’s filter.  
+4. **Vanilla still leads mean LLM-judge** and win count; do not claim automatic answer-quality dominance. Position ICOT on **grounded multi-facet completeness + faithfulness + explainable sufficiency**.
 
 ---
 
@@ -59,27 +61,25 @@ Same artifact; category `multi_facet` (≥2 required evidence facets).
 
 ### Table 2. Multi-facet four-way
 
-| Method | Facet recall ↑ | Source hit ↑ | Keyword hit ↑ | Judge overall ↑ | Judge wins |
-|--------|----------------|--------------|---------------|-----------------|------------|
-| Vanilla RAG | 0.75 | 0.74 | 0.81 | **3.46** | 2 |
-| Prompt-only ICoT | 0.00 | 0.00 | 0.00 | 2.00 | 2 |
-| ChatIoT-style | **1.00** | **1.00** | **0.94** | 3.42 | 2 |
-| Facet ICOT | 0.88 | 0.89 | 0.83 | 3.23 | **3** |
-
-*(3 ties.)*
+| Method | Facet recall ↑ | Facet@6 ↑ | Source hit ↑ | Keyword hit ↑ | Faithfulness ↑ | Judge overall ↑ |
+|--------|----------------|-----------|--------------|---------------|----------------|-----------------|
+| Vanilla RAG | 0.69 | 0.69 | 0.69 | 0.83 | 0.51 | 3.38 |
+| Prompt-only ICoT | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 2.10 |
+| ChatIoT-style | **1.00** | 0.86 | **1.00** | **0.94** | **0.90** | 3.08 |
+| Facet ICOT | **1.00** | **1.00** | **1.00** | **0.94** | 0.88 | **3.48** |
 
 ### Finding (multi-facet)
 
-On questions that need multiple evidence types, **ChatIoT-style achieves perfect facet/source coverage** in this run. Facet ICOT improves over vanilla on retrieval (facet +0.13, source +0.15) but trails the multi-retriever single pass. Earlier three-way artifact (`multifacet_three_way.json`) without ChatIoT-style remains useful for the Zeng-style contrast.
+On questions that need multiple evidence types, **Facet ICOT matches ChatIoT on full facet/source coverage**, **wins facet@6** (1.00 vs 0.86), and **leads mean judge overall** on this subset. Vanilla retrieval drops (facet 0.69) when several facets are required.
 
 ---
 
-## 2c. Earlier three-way multi-facet (reference)
+## 2c. Earlier three-way multi-facet (historical reference)
 
-**Setting.** Same **12** multi-facet questions; vanilla vs prompt-only vs facet ICOT only.  
+**Setting.** Same **12** multi-facet questions; vanilla vs prompt-only vs facet ICOT only — **pre-improvement / prior artifact**.  
 Artifact: `multifacet_three_way.json`.
 
-### Table 3. Mean retrieval and judge scores (n = 12, three-way)
+### Table 3. Mean retrieval and judge scores (n = 12, three-way, historical)
 
 | Method | Facet recall ↑ | Source hit ↑ | Keyword hit ↑ | Judge overall ↑ | Judge wins |
 |--------|----------------|--------------|---------------|-----------------|------------|
@@ -89,7 +89,7 @@ Artifact: `multifacet_three_way.json`.
 
 *(2 ties among methods on judge overall.)*
 
-### Table 4. LLM-as-judge dimensions (n = 12, three-way)
+### Table 4. LLM-as-judge dimensions (n = 12, three-way, historical)
 
 | Method | Reliability | Relevance | Technicality | Friendliness | Overall |
 |--------|-------------|-----------|--------------|--------------|---------|
@@ -167,7 +167,7 @@ Artifact: `llm_judge_smoke.json` (n=10 mixed categories; ICOT iter=2 + filter).
 
 ## 7. Takeaway
 
-Facet-aware ICOT-RAG clearly beats **prompt-only ICoT** and improves multi-facet coverage vs **vanilla** single-pass retrieval. Against a **ChatIoT-style multi-retriever**, ICOT does not win raw facet/source hit rates in the n=50 run — the multi-source merge is a strong baseline. ICOT’s differentiators for the paper are **iterative sufficiency checking**, **answer-context filtering**, and an **explainable trace**. Answer-quality (judge) wins are mixed; do not overclaim “always better answers.”
+Facet-aware ICOT-RAG (multi-source init + needed-facet stop + filtered answering) **beats prompt-only ICoT**, **matches/leads ChatIoT-style on full-set facet/source coverage**, and **wins facet@6 and faithfulness** on the n=50 expanded-KB run. On the multi-facet subset it also leads mean judge overall. Vanilla can still win full-set mean judge — claim **grounded multi-facet completeness + budgeted evidence + trace**, not “always best prose.”
 
 ---
 

@@ -28,7 +28,9 @@ class RAGICOTPipeline:
 
         result = self.engine.reason(
             question,
-            max_iterations=max_iterations
+            max_iterations=max_iterations,
+            required_facets=required_facets,
+            multisource_init=True,
         )
 
         all_docs = result["documents"]
@@ -57,4 +59,5 @@ class RAGICOTPipeline:
             "answer_documents": answer_docs,
             "trace": result["trace"],
             "covered_facets": covered,
+            "needed_facets": result.get("needed_facets") or required_facets,
         }
