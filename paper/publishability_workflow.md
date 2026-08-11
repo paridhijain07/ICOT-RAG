@@ -5,9 +5,9 @@ Roadmap to turn ICOT-RAG from a working research prototype into a submission-rea
 
 Current status (honest):
 
-- Done: facet ICOT pipeline, KB (~1837 docs after IoT-23 expansion), Streamlit demo, protocol, ChatIoT-style baseline, **full 50-Q four-way** (`full_four_way.json`), Methods/Results drafts updated.
-- In progress: scaled multi-facet ablations (`run_scaled_ablations.py`).
-- Not done: human ratings, Intro/Related Work, conference PDF, journal stretch items.
+- Done: improved facet ICOT (multi-source init + needed-facet stop), KB (~1837 docs), Streamlit (Results from `full_four_way.json`), protocol, ChatIoT-style baseline, **full 50-Q four-way** (n=50, 0 errors), Methods/Results drafts, faithfulness + facet@budget in eval, human-eval pack (24 sheets).
+- In progress: human **ratings** collection; Intro / Related Work / IEEE manuscript.
+- Not done: significance tests, conference/journal PDF packaging.
 
 ---
 

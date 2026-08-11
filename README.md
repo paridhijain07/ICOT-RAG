@@ -26,12 +26,12 @@ Build and study a **facet-aware ICOT-RAG** system that:
 4. Answers from a **small filtered** evidence set (to avoid dumping 15–20 noisy docs into the generator)  
 5. Exposes a per-iteration **trace** (thought, confidence, facets, next query) for explainability and debugging  
 
-We compare this against vanilla RAG, prompt-only ICoT, and a ChatIoT-style multi-retriever under a shared evaluation protocol. Early automated runs exist; **human evaluation and the full paper are still in progress** — see [`paper/`](paper/).
+We compare this against vanilla RAG, prompt-only ICoT, and a ChatIoT-style multi-retriever under a shared evaluation protocol. A full **50-Q four-way** automated eval is frozen; **human ratings and the full paper manuscript are still in progress** — see [`paper/`](paper/).
 
 ### What you can do with this repo today
 
 - Rebuild / expand the knowledge base from local datasets  
-- Run the Streamlit demo (live ICOT + frozen result tables)  
+- Run the Streamlit demo (live ICOT + frozen `full_four_way` result tables)  
 - Run four-way evaluation and ablations (resume-safe scripts)  
 - Export a blind human-rating pack  
 - Read methods/results **drafts** (not a finished manuscript)
@@ -40,15 +40,16 @@ We compare this against vanilla RAG, prompt-only ICoT, and a ChatIoT-style multi
 
 | Area | Status |
 |------|--------|
-| Facet ICOT pipeline + Streamlit demo | Working |
-| Multi-source KB (MITRE + VARIoT + expanded IoT-23) | Working (~1.8k docs in local index) |
-| Eval protocol + 50-Q four-way harness | Working; artifacts under `artifacts/evaluation/` |
-| Ablations (iterations, answer-context filter) | Working (scaled multi-facet runs) |
-| Human evaluation (blind sheets) | Pack ready; **ratings collection ongoing** |
+| Facet ICOT (multi-source init + needed-facet stop) + Streamlit | Working / demo updated |
+| Multi-source KB (MITRE + VARIoT + expanded IoT-23) | Working (~1,837 docs) |
+| Full 50-Q four-way eval | **Done** — `artifacts/evaluation/full_four_way.json` |
+| Ablations (iterations, answer-context filter) | Done (scaled multi-facet) |
+| Faithfulness + facet@budget metrics | Done (in four-way summary) |
+| Human evaluation (blind sheets) | Pack ready (24/24); **ratings not collected** |
 | Paper (Intro / Related Work / IEEE PDF) | **Drafting** |
-| Faithfulness metrics / significance tests | Planned |
+| Significance tests (mean±std / paired) | Still open |
 
-Working notes: [`paper/submission_plan.md`](paper/submission_plan.md), [`paper/publishability_workflow.md`](paper/publishability_workflow.md).
+Working notes: [`paper/submission_plan.md`](paper/submission_plan.md), [`paper/publishability_workflow.md`](paper/publishability_workflow.md), [`paper/results_draft.md`](paper/results_draft.md).
 
 ---
 
@@ -85,27 +86,23 @@ Core entrypoint: `rag_icot.pipeline.rag_icot_pipeline.RAGICOTPipeline`.
 Question
    │
    ▼
-┌─────────────────────────────────────────────┐
-│  Unified Chroma index (icot_knowledge)      │
-│  MITRE · VARIoT · IoT-23                    │
-└─────────────────────────────────────────────┘
+Infer needed evidence facets
    │
    ▼
-Initial retrieve (top-k)
+Multi-source first retrieve (IoT-23 · MITRE · VARIoT)
    │
    ▼
 ┌─────────────────────────────────────────────┐
 │  ICOT loop (≤ T iterations)                 │
-│  • Reasoner: thought, confidence, facets,   │
-│    enough_information, next_source/query    │
-│  • If not enough → re-retrieve w/ filters   │
+│  • Needed facets covered? → stop            │
+│  • Else targeted re-retrieve for missing    │
 └─────────────────────────────────────────────┘
    │
    ▼
 Answer-context filter (facet-balanced, CVE boost)
    │
    ▼
-Generator → structured IoT security report
+Generator → grounded IoT security report
    + full docs + filtered docs + covered facets + trace
 ```
 
@@ -278,9 +275,9 @@ print(result["trace"])
 
 ---
 
-## Evaluation (in progress)
+## Evaluation
 
-We use a shared protocol so baselines stay comparable. Results in `artifacts/evaluation/` and [`paper/results_draft.md`](paper/results_draft.md) are **working drafts** — re-run after KB or model changes before treating numbers as final.
+Primary frozen run: `artifacts/evaluation/full_four_way.json` (n=50, improved Facet ICOT, expanded KB). Tables: [`paper/results_draft.md`](paper/results_draft.md). Human study and significance tests are still open.
 
 ### Dataset
 
@@ -298,14 +295,14 @@ Typical reporting splits:
 | Vanilla RAG | Single pass, `k=5`, unified index | None |
 | Prompt-only ICoT | None | 3-stage role CoT (Zeng-inspired) |
 | ChatIoT-style | Per-source retrieve + merge (no iteration) | None |
-| Facet ICOT | Iterative, facet/source filters, `T=3` | Sufficiency JSON + filtered answer |
+| Facet ICOT | Multi-source init → needed-facet stop / refine, `T=3` | Sufficiency JSON + filtered answer |
 
 ### Metrics
 
-- **Hard:** facet recall, source hit rate, keyword hit rate  
+- **Hard:** facet recall, facet recall@budget (≤6), source hit, keyword hit, faithfulness (ID grounding)  
 - **Soft:** LLM-as-judge (reliability, relevance, technicality, friendliness)  
 - **Ablations:** `max_iterations`, answer-context filter on/off  
-- **Planned:** human ratings, significance tests, faithfulness / grounding metrics  
+- **Still open:** human ratings, significance tests (mean±std / paired)  
 
 ### Run evals
 
