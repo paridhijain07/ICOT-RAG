@@ -272,7 +272,7 @@ def page_overview():
         ("KB documents", kb_document_count()),
         ("Sources", "MITRE · VARIoT · IoT-23"),
         ("Eval questions", "50"),
-        ("Main claim", "Multi-facet retrieval ↑"),
+        ("Main claim", "Facet@budget + faith ↑"),
     ]
     cards = "".join(
         f'<div class="metric-card"><div class="metric-label">{lab}</div>'
@@ -284,10 +284,10 @@ def page_overview():
     st.markdown("### What we built")
     st.markdown(
         """
-1. **Unified IoT security KB** — MITRE ATT&CK (techniques/mitigations), VARIoT (CVEs/exploits), IoT-23 (malware behaviour).  
-2. **Facet-aware ICOT loop** — retrieve → reason (which evidence facets are missing?) → re-retrieve from the right source.  
-3. **Answer-context filtering** — don’t dump 15–20 docs into the LLM; keep a tight facet-balanced set.  
-4. **Baselines + evaluation** — vanilla RAG, Zeng-style prompt-only ICoT, facet ICOT; hard metrics + LLM-as-judge.  
+1. **Unified IoT security KB** — MITRE ATT&CK (techniques/mitigations), VARIoT (CVEs/exploits), IoT-23 (malware behaviour; expanded scenarios).  
+2. **Facet-aware ICOT** — multi-source first retrieve → check **needed** facets → targeted re-retrieve only if gaps remain.  
+3. **Answer-context filtering** — don’t dump 15–20 docs into the LLM; keep a tight facet-balanced set (≤6).  
+4. **Baselines + evaluation** — vanilla RAG, prompt-only ICoT, ChatIoT-style, facet ICOT; hard metrics + faithfulness + LLM-as-judge.  
 5. **Explainable trace** — per-iteration thought, confidence, facets, next source, retrieved IDs.
 """
     )
@@ -310,16 +310,16 @@ def page_overview():
                     "Facet routing": "No",
                 },
                 {
-                    "Work": "ChatIoT",
+                    "Work": "ChatIoT-style",
                     "Retrieval": "Multi-retriever (single pass)",
                     "Iteration": "No",
-                    "Facet routing": "Selector",
+                    "Facet routing": "Per-source merge",
                 },
                 {
                     "Work": "This work (ICOT-RAG)",
-                    "Retrieval": "Unified multi-source RAG",
-                    "Iteration": "Yes",
-                    "Facet routing": "Yes + filter + trace",
+                    "Retrieval": "Multi-source init + refine",
+                    "Iteration": "Yes (if facets missing)",
+                    "Facet routing": "Needed facets + filter + trace",
                 },
             ]
         ),
@@ -413,6 +413,15 @@ def page_demo():
             + "</div>",
             unsafe_allow_html=True,
         )
+    needed = result.get("needed_facets") or []
+    if needed:
+        st.markdown("**Needed facets**")
+        st.markdown(
+            '<div class="chip-row">'
+            + " ".join(f'<span class="chip">{f}</span>' for f in needed)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
 
     c1, c2 = st.columns(2)
     with c1:
@@ -438,17 +447,53 @@ def page_demo():
         with st.expander(
             f"Iteration {step.get('iteration')} — "
             f"confidence={step.get('confidence')} · enough={step.get('enough_information')}"
+            + (
+                f" · {step.get('stop_reason')}"
+                if step.get("stop_reason")
+                else ""
+            )
         ):
             st.markdown(
                 f'<div class="trace-box"><b>Thought</b><br/>{step.get("thought")}</div>',
                 unsafe_allow_html=True,
             )
             st.write("Reason:", step.get("reason"))
+            if step.get("needed_facets"):
+                st.write("Needed facets:", step.get("needed_facets"))
             st.write("Covered facets:", step.get("covered_facets"))
             st.write("Missing facets:", step.get("missing_facets"))
             st.write("Next source:", step.get("next_source"))
             st.write("Search query:", step.get("search_query"))
             st.write("Retrieved IDs:", step.get("retrieved_document_ids"))
+
+
+def _hard_table_from_four_way(data: dict) -> pd.DataFrame:
+    hard = data.get("hard_summary") or {}
+    judge = data.get("judge_summary") or {}
+    wins = data.get("judge_wins") or {}
+    rows = []
+    names = {
+        "vanilla": "Vanilla RAG",
+        "prompt_only_icot": "Prompt-only ICoT",
+        "chatiot_style": "ChatIoT-style",
+        "facet_icot": "Facet ICOT",
+    }
+    for key, label in names.items():
+        h = hard.get(key) or {}
+        j = judge.get(key) or {}
+        rows.append(
+            {
+                "Method": label,
+                "Facet recall": round(float(h.get("facet_recall", 0)), 3),
+                "Facet@6": round(float(h.get("facet_recall_at_budget", 0)), 3),
+                "Source hit": round(float(h.get("source_hit_rate", 0)), 3),
+                "Keyword hit": round(float(h.get("keyword_hit_rate", 0)), 3),
+                "Faithfulness": round(float(h.get("faithfulness_rate", 0)), 3),
+                "Judge overall": round(float(j.get("overall", 0)), 3),
+                "Judge wins": int(wins.get(key, 0)),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def _hard_table_from_three_way(data: dict) -> pd.DataFrame:
@@ -479,22 +524,75 @@ def _hard_table_from_three_way(data: dict) -> pd.DataFrame:
 
 def page_results():
     st.header("Evaluation results")
-    st.caption("Frozen numbers from `artifacts/evaluation/` — same story as the paper Results draft.")
+    st.caption(
+        "Frozen numbers from `artifacts/evaluation/full_four_way.json` "
+        "(expanded KB + improved Facet ICOT). See also `paper/results_draft.md`."
+    )
 
-    three = load_json("multifacet_three_way.json")
-    if three:
-        st.subheader("Main result — multi-facet, 3-way (n=12)")
-        df = _hard_table_from_three_way(three)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        st.bar_chart(df.set_index("Method")[["Facet recall", "Source hit", "Judge overall"]])
-        st.success(
-            "Takeaway: Facet ICOT leads retrieval coverage; prompt-only ICoT is weakest; "
-            "vanilla often still wins answer-style judge scores."
+    four = load_json("full_four_way.json")
+    if four and four.get("hard_summary"):
+        n = (four.get("hard_summary") or {}).get("n") or len(four.get("rows") or [])
+        ties = four.get("judge_ties", "—")
+        st.subheader(f"Main result — full 4-way (n={n})")
+        cfg = four.get("config") or {}
+        st.caption(
+            f"Model: {cfg.get('llm_model', '?')} · "
+            f"multisource_init={cfg.get('icot_multisource_init', '?')} · "
+            f"judge ties={ties}"
         )
-    else:
-        st.warning("Missing `multifacet_three_way.json`")
+        df = _hard_table_from_four_way(four)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        chart_cols = [
+            c
+            for c in ["Facet recall", "Facet@6", "Faithfulness", "Judge overall"]
+            if c in df.columns
+        ]
+        st.bar_chart(df.set_index("Method")[chart_cols])
+        st.success(
+            "Takeaway: Facet ICOT leads facet recall / facet@6 / faithfulness on the full set; "
+            "vanilla can still win mean LLM-judge. Prompt-only ICoT is weakest."
+        )
 
-    ab = load_json("llm_iter_ablation.json")
+        mf = (four.get("by_category") or {}).get("multi_facet")
+        if mf:
+            st.subheader(f"Multi-facet subset (n={mf.get('n', '?')})")
+            mf_rows = []
+            labels = {
+                "vanilla": "Vanilla RAG",
+                "prompt_only_icot": "Prompt-only ICoT",
+                "chatiot_style": "ChatIoT-style",
+                "facet_icot": "Facet ICOT",
+            }
+            hard = mf.get("hard") or {}
+            judge_o = mf.get("judge_overall") or {}
+            for key, label in labels.items():
+                h = hard.get(key) or {}
+                mf_rows.append(
+                    {
+                        "Method": label,
+                        "Facet recall": round(float(h.get("facet_recall", 0)), 3),
+                        "Facet@6": round(
+                            float(h.get("facet_recall_at_budget", 0)), 3
+                        ),
+                        "Source hit": round(float(h.get("source_hit_rate", 0)), 3),
+                        "Faithfulness": round(
+                            float(h.get("faithfulness_rate", 0)), 3
+                        ),
+                        "Judge overall": round(float(judge_o.get(key, 0)), 3),
+                    }
+                )
+            mf_df = pd.DataFrame(mf_rows)
+            st.dataframe(mf_df, use_container_width=True, hide_index=True)
+            st.info(
+                "On multi-facet questions Facet ICOT keeps perfect facet@6 and often "
+                "leads mean judge vs ChatIoT-style and vanilla."
+            )
+    else:
+        st.warning("Missing or incomplete `full_four_way.json`")
+
+    ab = load_json("llm_iter_ablation_multifacet.json") or load_json(
+        "llm_iter_ablation.json"
+    )
     if ab and ab.get("summary"):
         st.subheader("Ablation — iteration budget")
         rows = []
@@ -509,7 +607,9 @@ def page_results():
             )
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-    filt = load_json("answer_context_filter_compare.json")
+    filt = load_json("answer_context_filter_multifacet.json") or load_json(
+        "answer_context_filter_compare.json"
+    )
     if filt and filt.get("summary"):
         st.subheader("Ablation — answer-context filter")
         s = filt["summary"]
@@ -518,22 +618,37 @@ def page_results():
         c2.metric("Filtered judge", f"{s.get('avg_filtered', 0):.2f}")
         c3.metric("Delta", f"{s.get('delta', 0):+.2f}")
 
-    st.subheader("Per-question judge (3-way)")
-    if three and three.get("rows"):
+    st.subheader("Per-question judge (4-way)")
+    if four and four.get("rows"):
         detail = []
-        for r in three["rows"]:
+        for r in four["rows"]:
             j = r.get("judges") or {}
             detail.append(
                 {
                     "ID": r["id"],
+                    "Category": r.get("category", ""),
                     "Vanilla": round(j.get("vanilla", {}).get("overall", 0), 2),
                     "Prompt-only": round(
                         j.get("prompt_only_icot", {}).get("overall", 0), 2
+                    ),
+                    "ChatIoT-style": round(
+                        j.get("chatiot_style", {}).get("overall", 0), 2
                     ),
                     "Facet ICOT": round(j.get("facet_icot", {}).get("overall", 0), 2),
                 }
             )
         st.dataframe(pd.DataFrame(detail), use_container_width=True, hide_index=True)
+
+    with st.expander("Historical — older 3-way multi-facet (n=12)"):
+        three = load_json("multifacet_three_way.json")
+        if three:
+            st.dataframe(
+                _hard_table_from_three_way(three),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.caption("No multifacet_three_way.json found.")
 
 
 def page_howto():
@@ -544,20 +659,22 @@ def page_howto():
 Question
    │
    ▼
-Initial retrieve (Chroma top-k)
+Infer needed evidence facets
+   │
+   ▼
+Multi-source first retrieve (IoT-23 · MITRE · VARIoT)
    │
    ▼
 ┌─ ICOT iteration (max 3) ──────────────────┐
-│  Reason: facets covered? confidence?       │
-│  If enough → stop                          │
-│  Else → re-retrieve by next_source / facet │
+│  Needed facets already covered? → stop      │
+│  Else reason: gap → re-retrieve that source │
 └────────────────────────────────────────────┘
    │
    ▼
 Filter answer docs (≤6, facet-balanced)
    │
    ▼
-Generate structured IoT security report
+Generate grounded IoT security report
    │
    ▼
 Return answer + docs + covered_facets + trace
@@ -570,7 +687,7 @@ Return answer + docs + covered_facets + trace
   pipeline/        # RAGICOTPipeline
   components/      # retriever, reasoner, filter, prompt-only ICoT
   evaluation/      # baselines, metrics, judge
-artifacts/evaluation/  # frozen result JSONs
+artifacts/evaluation/  # frozen result JSONs (full_four_way.json)
 paper/             # results_draft.md, methods_draft.md
 streamlit_app.py   # this demo
 """,
@@ -578,8 +695,8 @@ streamlit_app.py   # this demo
     )
     st.markdown(
         "Paper drafts: `paper/results_draft.md`, `paper/methods_draft.md`. "
-        "Claim to emphasize: **facet-aware iterative retrieval improves multi-source coverage**; "
-        "prompt-only ICoT is not enough; answer filtering matters."
+        "Emphasize: **Facet ICOT leads budgeted facet coverage and faithfulness**; "
+        "prompt-only ICoT is not enough; vanilla may still win mean judge on the full set."
     )
 
 
