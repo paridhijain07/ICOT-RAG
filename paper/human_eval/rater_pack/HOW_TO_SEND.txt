@@ -1,0 +1,11 @@
+SEND TO RATERS (zip this rater_pack folder OR send these files):
+  1) ICOT_RAG_Human_Eval_Rater_Packet.docx   ← easiest to open in Word/Google Docs
+  2) ratings_template.csv                    ← for entering scores
+  3) Optional: ICOT_RAG_Human_Eval_Rater_Packet.html (open in browser → Print → Save as PDF)
+
+DO NOT SEND:
+  key_DO_NOT_SHARE.json
+  answers_full.json
+
+After ratings: save filled CSV as paper/human_eval/ratings_filled.csv then run:
+  python scripts/analyze_human_ratings.py paper/human_eval/ratings_filled.csv
