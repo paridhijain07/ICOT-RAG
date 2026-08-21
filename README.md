@@ -31,9 +31,9 @@ We compare this against vanilla RAG, prompt-only ICoT, and a ChatIoT-style multi
 ### What you can do with this repo today
 
 - Rebuild / expand the knowledge base from local datasets  
-- Run the Streamlit demo (live ICOT + frozen `full_four_way` result tables)  
+- Run the Streamlit demo (live ICOT, results insights, optional web fallback, answer-quality scorecard)  
 - Run four-way evaluation and ablations (resume-safe scripts)  
-- Export a blind human-rating pack  
+- Export a blind human-rating pack (sendable PDF/DOCX under `paper/human_eval/rater_pack/`)  
 - Read methods/results **drafts** (not a finished manuscript)
 
 ### Current status (high level)
@@ -45,7 +45,9 @@ We compare this against vanilla RAG, prompt-only ICoT, and a ChatIoT-style multi
 | Full 50-Q four-way eval | **Done** — `artifacts/evaluation/full_four_way.json` |
 | Ablations (iterations, answer-context filter) | Done (scaled multi-facet) |
 | Faithfulness + facet@budget metrics | Done (in four-way summary) |
-| Human evaluation (blind sheets) | Pack ready (24/24); **ratings not collected** |
+| Demo web fallback + optional KB growth (free search) | Working (off by default; not used in frozen eval) |
+| Answer-quality confidence scorecard | Working (demo / pipeline; separate from facet stop confidence) |
+| Human evaluation (blind sheets + rater pack) | Pack ready (24/24); **ratings not collected** |
 | Paper (Intro / Related Work / IEEE PDF) | **Drafting** |
 | Significance tests (mean±std / paired) | Still open |
 
@@ -78,7 +80,9 @@ Facet coverage is inferred from document metadata (`source`, `document_type`).
    - Else reasoner proposes one targeted re-retrieve for a missing needed facet only  
 4. **Answer-context filtering** — facet-balanced subset (default ≤2 docs/facet, ≤6 total; CVE hits prioritized)  
 5. **Answer generation** — structured IoT security-style report from the filtered set  
-6. Return answer + full retrieved docs + filtered docs + covered facets + **trace**
+6. **Answer-quality scorecard** (demo) — groundedness / relevance / retrieval / abstention → overall `answer_confidence`  
+7. **Optional web fallback** (demo) — if local evidence looks weak, free web search + LLM note → regenerate; optional Chroma ingest  
+8. Return answer + docs + facets + **trace** + coverage vs answer confidence  
 
 Core entrypoint: `rag_icot.pipeline.rag_icot_pipeline.RAGICOTPipeline`.
 
@@ -103,14 +107,19 @@ Answer-context filter (facet-balanced, CVE boost)
    │
    ▼
 Generator → grounded IoT security report
-   + full docs + filtered docs + covered facets + trace
+   │
+   ├─ (optional) KB weak? → free web search + note → regenerate
+   │
+   ▼
+Answer-quality scorecard (groundedness · relevance · …)
+   + coverage confidence (facet stop) + docs + trace
 ```
 
 ### Main components (`rag_icot/`)
 
 | Area | Responsibility |
 |------|----------------|
-| `components/` | Data ingestion, KB builders, embeddings, vector store, reasoning engine, answer generator, context filter |
+| `components/` | Data ingestion, KB builders, embeddings, vector store, reasoning, answer generator, context filter, **web research**, **answer confidence** |
 | `constants/` | Facet names and source filters |
 | `evaluation/` | Baselines (vanilla, prompt-only, ChatIoT-style, facet ICOT), metrics |
 | `pipeline/` | End-to-end `RAGICOTPipeline` |
@@ -123,9 +132,12 @@ Generator → grounded IoT security report
 | Unified IoT security KB | MITRE · VARIoT · IoT-23 in one index |
 | Facet-aware ICOT loop | Retrieve → sufficiency reason → targeted re-retrieve |
 | Answer-context filtering | Compact evidence for generation |
+| Coverage vs answer confidence | Facet-stop score ≠ usefulness scorecard |
+| Web fallback (demo) | Free `ddgs` search + LLM note when KB is weak |
+| Optional KB growth (demo) | Ingest allowlisted quality web notes into Chroma |
 | Baselines + eval scripts | Four-way compare, ablations, LLM-as-judge |
-| Human-eval pack | Blind A–D sheets + rubric |
-| Streamlit demo | Overview, live run, results, how-it-works |
+| Human-eval pack | Blind A–D sheets + rubric + sendable rater PDF/DOCX |
+| Streamlit demo | Overview, live run, results insights, how-it-works |
 
 ---
 
@@ -191,7 +203,7 @@ Edit `.env`:
 ```env
 LLM_PROVIDER=groq
 GROQ_API_KEY=your_key_here
-GROQ_MODEL=llama-3.1-8b-instant
+GROQ_MODEL=openai/gpt-oss-20b
 ```
 
 See [`.env.example`](.env.example) for Gemini fallback options.
@@ -245,13 +257,40 @@ Open [http://localhost:8501](http://localhost:8501).
 | Page | Content |
 |------|---------|
 | Overview | Project pitch, live KB document count |
-| Live demo | Run facet ICOT; answer + filtered docs + trace |
-| Results | Frozen tables from `artifacts/evaluation/*.json` |
+| Live demo | Type any question (or load eval samples); run facet ICOT; docs + trace; **coverage vs answer confidence**; optional web fallback |
+| Results | Frozen tables + interpretation from `artifacts/evaluation/*.json` |
 | How it works | Pipeline overview |
 
 Details: [`paper/demo_streamlit.md`](paper/demo_streamlit.md).
 
 **Live demo** needs `.env` + `artifacts/chroma_db`. **Results** can be browsed offline from frozen JSON artifacts.
+
+### Live demo controls
+
+- **Your question** — always-visible text box; Out-of-KB example buttons; optional eval-set picker  
+- **Web fallback if KB weak** (off by default) — free `ddgs` search (Bing/Google backends, no search API key) + Groq/Gemini synthesizes a grounded note, then regenerates  
+- **Grow KB from quality web notes** — only if web fallback is on; ingests medium/high notes that cite allowlisted domains (MITRE, NVD, CISA, vendors…)  
+
+**Keep web toggles off when reproducing frozen paper numbers.**
+
+### Confidence scores (demo)
+
+| Score | Meaning |
+|-------|---------|
+| **Coverage confidence** | ICOT facet/stop checklist (can be high even if docs are off-topic) |
+| **Answer confidence** | RAG-style usefulness scorecard after generation |
+
+Answer-confidence dimensions (no extra LLM call; uses existing embeddings):
+
+- **Groundedness** — IDs/claims supported by context; honest abstention scores high here  
+- **Answer relevance** — question ↔ answer (lexical + embedding similarity)  
+- **Context relevance** — question ↔ retrieved docs  
+- **Retrieval support** — dense match tightness  
+- **Abstention quality** — refuse when context is weak (good) vs answer anyway (bad)  
+
+If the model correctly says evidence is insufficient, **overall answer confidence stays low** (no usable answer), while abstention quality can still look good.
+
+Implementation: `rag_icot/components/answer_confidence.py`, `rag_icot/components/web_research.py`.
 
 ---
 
@@ -266,18 +305,25 @@ result = pipeline.run(
     max_iterations=3,
     required_facets=["behaviour", "technique"],
     filter_answer_context=True,
+    web_fallback=False,  # demo only; keep False for frozen eval
+    grow_kb=False,
 )
 
 print(result["answer"])
 print(result["covered_facets"])
 print(result["trace"])
+print(result["coverage_confidence"], result["answer_confidence"])
+print(result["answer_confidence_dimensions"])
 ```
 
 ---
 
 ## Evaluation
 
-Primary frozen run: `artifacts/evaluation/full_four_way.json` (n=50, improved Facet ICOT, expanded KB). Tables: [`paper/results_draft.md`](paper/results_draft.md). Human study and significance tests are still open.
+Primary frozen run: `artifacts/evaluation/full_four_way.json` (n=50, improved Facet ICOT, expanded KB).  
+**Generator used for that freeze:** Groq `llama-3.1-8b-instant` (since retired).  
+**Live demo / new runs default:** `openai/gpt-oss-20b` (see `.env`).  
+Tables: [`paper/results_draft.md`](paper/results_draft.md). Human study and significance tests are still open.
 
 ### Dataset
 
@@ -335,8 +381,10 @@ python scripts/analyze_human_ratings.py paper/human_eval/ratings_filled.csv
 ```
 
 - Rubric: [`paper/human_eval_rubric.md`](paper/human_eval_rubric.md)  
-- Give raters only `sheets/*.md` + the rubric  
+- Sendable pack: [`paper/human_eval/rater_pack/`](paper/human_eval/rater_pack/) (PDF/DOCX + `ratings_template.csv`)  
+- Give raters only the packet / sheets + rubric  
 - **Do not share** `key_DO_NOT_SHARE.json` or `answers_full.json` with raters (both gitignored)
+- Rebuild packet: `python scripts/build_human_eval_rater_packet.py`
 
 ---
 
@@ -358,8 +406,11 @@ These are **working notes**, not a finished submission:
 | Variable | Meaning |
 |----------|---------|
 | `LLM_PROVIDER` | `groq` or `gemini` |
-| `GROQ_API_KEY` / `GROQ_MODEL` | Groq auth + model |
+| `GROQ_API_KEY` | Groq API key |
+| `GROQ_MODEL` | Default live model: `openai/gpt-oss-20b` (free tier). `llama-3.1-8b-instant` was retired by Groq (2026-08-16). |
 | `GOOGLE_API_KEY` / `GEMINI_MODEL` | Gemini fallback |
+
+Extra package for web fallback: `ddgs` (listed in `requirements.txt`).
 
 Embedding model (code default): `BAAI/bge-small-en-v1.5` · Vector store: Chroma persistent under `artifacts/chroma_db`.
 
@@ -369,10 +420,22 @@ Embedding model (code default): `BAAI/bge-small-en-v1.5` · Vector store: Chroma
 
 - IoT-23 documents are **scenario-level aggregates**, not full PCAP dumps (no default-password dictionaries in-KB unless added).  
 - VARIoT is a **capped sample**; product metadata is incomplete for many vulns.  
-- Reasoner **confidence** is an LLM self-score (not calibrated).  
+- ICOT **coverage confidence** (facet stop, often ~0.85) is **not** answer-quality confidence — metadata facets can look “covered” by off-topic nearest neighbors.  
+- Demo **answer confidence** is a local heuristic scorecard (not a calibrated probability).  
 - LLM-as-judge is noisy; human ratings should validate soft metrics.  
 - ChatIoT-style baseline is a fair multi-source merge, **not** the full learned ChatIoT selector.  
-- Free-tier models may rate-limit during full 50-Q / human-pack runs (scripts support resume + backoff).
+- Free-tier models may rate-limit during full 50-Q / human-pack runs (scripts support resume + backoff).  
+- Closed KB (MITRE / VARIoT / IoT-23): out-of-corpus questions may be under-supported; optional web fallback exists for demos but is **disabled in frozen eval**.  
+- Auto KB growth from the web is a demo feature only (poisoning / reproducibility risk if left on during experiments).
+
+---
+
+## Future work
+
+- Harden web-fallback gating + human review queue before permanent ingest.  
+- Calibrate / publish answer-confidence formula if used in the paper.  
+- Significance tests and completed human ratings.  
+- Stronger generator to close the full-set LLM-judge gap vs vanilla.
 
 ---
 
@@ -401,7 +464,8 @@ This repository’s code is a research prototype; add an explicit license file i
 ## Quick checklist (new machine)
 
 1. `pip install -r requirements.txt && pip install -e .`  
-2. Copy `.env.example` → `.env` and set `GROQ_API_KEY`  
+2. Copy `.env.example` → `.env` and set `GROQ_API_KEY` (model default `openai/gpt-oss-20b`)  
 3. Ensure `datasets/` sources exist; run `rebuild_iot23_kb.py` + `rebuild_master_index.py` if Chroma is missing  
 4. `streamlit run streamlit_app.py`  
-5. Optional: `python scripts/run_full_eval.py --limit 3 --four-way`
+5. Optional: `python scripts/run_full_eval.py --limit 3 --four-way`  
+6. Optional demo: enable web fallback in Live demo (`ddgs` already in requirements)

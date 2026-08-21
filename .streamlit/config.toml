@@ -8,6 +8,9 @@ font = "sans serif"
 
 [server]
 headless = true
+# Avoid Streamlit probing transformers/*/image_processing_* (needs torchvision)
+# and spamming ModuleNotFoundError when the embedding model is loaded.
+fileWatcherType = "none"
 
 [browser]
 gatherUsageStats = false

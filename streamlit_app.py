@@ -444,6 +444,13 @@ div[data-testid="stDataFrame"] {
 .stSelectbox div[data-baseweb="select"] > div {
   border-radius: 8px !important;
   border-color: var(--border-strong) !important;
+  background: #ffffff !important;
+  color: var(--navy) !important;
+  font-size: 1rem !important;
+}
+.stTextArea textarea {
+  min-height: 120px !important;
+  border: 2px solid #8fa3b8 !important;
 }
 
 hr { border-color: var(--border) !important; margin: 1.5rem 0 !important; }
@@ -662,15 +669,55 @@ def page_demo():
     page_header(
         "Interactive",
         "Live demo",
-        "Run the real facet-ICOT pipeline on eval samples or a custom question. "
-        "Requires `.env` (`LLM_PROVIDER` + API key) and a built Chroma index.",
+        "Type a question below, then run Facet ICOT. Turn on web fallback to "
+        "test out-of-KB queries (free search + Groq).",
     )
 
-    questions = load_eval_questions()
-    left, right = st.columns([1.15, 0.85], gap="large")
+    WEB_TEST_PROMPTS = [
+        "What is CVE-2024-3400 and how does it affect Palo Alto PAN-OS?",
+        "Explain the latest CISA known exploited vulnerabilities for IoT routers in 2025–2026.",
+        "What ATT&CK techniques are used by the Mozi botnet after 2023?",
+    ]
 
-    with left:
-        st.markdown('<p class="section-label">Query</p>', unsafe_allow_html=True)
+    questions = load_eval_questions()
+    required = None
+
+    # --- Always-visible question box (full width) ---
+    st.markdown('<p class="section-label">Your question</p>', unsafe_allow_html=True)
+
+    # Apply queued updates BEFORE the text_area widget is created (Streamlit rule).
+    if "pending_demo_question" in st.session_state:
+        st.session_state["demo_question"] = st.session_state.pop("pending_demo_question")
+    if "demo_question" not in st.session_state:
+        st.session_state["demo_question"] = (
+            "What network behaviours does Mirai show in the "
+            "IoT-23 Capture-7-1 scenario?"
+        )
+
+    st.text_area(
+        "Question",
+        key="demo_question",
+        height=140,
+        label_visibility="collapsed",
+        placeholder="Type any IoT cybersecurity question here…",
+    )
+    question = st.session_state.get("demo_question") or ""
+
+    st.caption("Quick fills for web-fallback testing (likely outside the frozen KB)")
+    qcols = st.columns(3)
+    for i, prompt in enumerate(WEB_TEST_PROMPTS):
+        if qcols[i].button(
+            f"Out-of-KB example {i + 1}",
+            key=f"ood_{i}",
+            help=prompt,
+            use_container_width=True,
+        ):
+            st.session_state["pending_demo_question"] = prompt
+            st.session_state["web_fb_box"] = True
+            st.session_state.pop("demo_required_facets", None)
+            st.rerun()
+
+    with st.expander("Or load a question from the eval set"):
         categories = sorted({q.get("category", "general") for q in questions})
         cat_choice = st.selectbox(
             "Category",
@@ -689,56 +736,72 @@ def page_demo():
         }
         choice = st.selectbox(
             f"Sample ({len(samples)})",
-            ["(custom)"] + list(labels.keys()),
+            ["— select —"] + list(labels.keys()),
         )
-        if choice == "(custom)":
-            question = st.text_area(
-                "Question",
-                value=(
-                    "What network behaviours does Mirai show in the "
-                    "IoT-23 Capture-7-1 scenario?"
-                ),
-                height=110,
-            )
-            required = None
-        else:
+        if choice != "— select —":
             q = labels[choice]
-            question = q["question"]
-            required = q.get("required_facets")
-            st.markdown(
-                '<div class="panel"><p class="panel-title">Selected question</p>'
-                f'<div class="answer-body">{html.escape(question)}</div></div>',
-                unsafe_allow_html=True,
-            )
-            if required:
-                st.caption("Required facets")
-                st.markdown(facet_chips(required), unsafe_allow_html=True)
+            if st.button("Use this eval question", type="secondary"):
+                st.session_state["pending_demo_question"] = q["question"]
+                st.session_state["demo_required_facets"] = q.get("required_facets")
+                st.rerun()
 
-    with right:
-        st.markdown('<p class="section-label">Controls</p>', unsafe_allow_html=True)
+    required = st.session_state.get("demo_required_facets")
+
+    st.markdown('<p class="section-label">Controls</p>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
         iters = st.slider("Max ICOT iterations", 1, 3, 3)
+    with c2:
         filter_ctx = st.checkbox("Answer-context filtering", value=True)
-        st.caption("First run loads the embedding model once — expect a short wait.")
-        run = st.button("Run facet ICOT", type="primary", use_container_width=True)
+    with c3:
+        if "web_fb_box" not in st.session_state:
+            st.session_state["web_fb_box"] = False
+        web_fb = st.checkbox(
+            "Web fallback if KB weak",
+            key="web_fb_box",
+            help=(
+                "When local evidence looks weak, search the web (free) and "
+                "regenerate with a grounded note."
+            ),
+        )
+    grow_kb = st.checkbox(
+        "Grow KB from quality web notes (allowlisted domains only)",
+        value=False,
+        disabled=not web_fb,
+    )
+
+    run = st.button("Run facet ICOT", type="primary", use_container_width=True)
 
     if run:
+        if not question.strip():
+            st.warning("Type a question in the box above first.")
+            return
+        # Clear facet lock when user typed freely (unless loaded from eval)
+        # Keep required only if current text matches last loaded eval Q.
         try:
             pipeline = get_pipeline()
-            with st.spinner("Retrieving + reasoning…"):
+            with st.spinner(
+                "Retrieving + reasoning"
+                + (" (+ web fallback if needed)…" if web_fb else "…")
+            ):
                 result = pipeline.run(
-                    question,
+                    question.strip(),
                     max_iterations=iters,
                     required_facets=required,
                     filter_answer_context=filter_ctx,
+                    web_fallback=web_fb,
+                    grow_kb=grow_kb,
                 )
             st.session_state["last_result"] = result
-            st.session_state["last_question"] = question
+            st.session_state["last_question"] = question.strip()
         except Exception as exc:
             st.error(f"Run failed: {type(exc).__name__}: {exc}")
             st.markdown(
                 '<div class="note-box">Check <code>.env</code> '
-                "(<code>LLM_PROVIDER=groq</code>, <code>GROQ_API_KEY=…</code>) "
-                "and that Chroma exists under <code>artifacts/chroma_db</code>.</div>",
+                "(<code>LLM_PROVIDER=groq</code>, <code>GROQ_API_KEY=…</code>, "
+                "<code>GROQ_MODEL=openai/gpt-oss-20b</code>) "
+                "and that Chroma exists under <code>artifacts/chroma_db</code>. "
+                "For web fallback also run <code>pip install ddgs</code>.</div>",
                 unsafe_allow_html=True,
             )
             return
@@ -746,15 +809,105 @@ def page_demo():
     result = st.session_state.get("last_result")
     if not result:
         st.markdown(
-            '<div class="note-box">Pick a question and click <b>Run facet ICOT</b> '
-            "to see the answer, filtered evidence, and iteration trace.</div>",
+            '<div class="note-box">Type your question in the box at the top, '
+            "optionally enable <b>Web fallback</b>, then click "
+            "<b>Run facet ICOT</b>.</div>",
             unsafe_allow_html=True,
         )
         return
 
     st.markdown('<p class="section-label">Answer</p>', unsafe_allow_html=True)
-    st.markdown('<div class="panel"><p class="panel-title">System output</p></div>', unsafe_allow_html=True)
+    if st.session_state.get("last_question"):
+        st.caption(f"Q: {st.session_state['last_question']}")
+
+    c_cov, c_ans, c_lab = st.columns(3)
+    cov = result.get("coverage_confidence")
+    ans_c = result.get("answer_confidence")
+    c_cov.metric(
+        "Coverage confidence",
+        "—" if cov is None else f"{float(cov):.2f}",
+        help="ICOT facet/stop confidence (checklist), not answer quality.",
+    )
+    c_ans.metric(
+        "Answer confidence",
+        "—" if ans_c is None else f"{float(ans_c):.2f}",
+        help="Overall usefulness score (RAG-style weighted dimensions).",
+    )
+    c_lab.metric(
+        "Answer quality",
+        str(result.get("answer_confidence_label") or "—"),
+    )
+
+    dims = result.get("answer_confidence_dimensions") or {}
+    if dims:
+        d1, d2, d3, d4, d5 = st.columns(5)
+        d1.metric("Groundedness", f"{dims.get('groundedness', 0):.2f}")
+        d2.metric("Answer relevance", f"{dims.get('answer_relevance', 0):.2f}")
+        d3.metric("Context relevance", f"{dims.get('context_relevance', 0):.2f}")
+        d4.metric("Retrieval support", f"{dims.get('retrieval_support', 0):.2f}")
+        d5.metric("Abstention quality", f"{dims.get('abstention_quality', 0):.2f}")
+
+    with st.expander("How answer confidence is scored"):
+        st.markdown(
+            """
+**Coverage confidence** = ICOT facet checklist / stop rule (can be high even if docs are off-topic).
+
+**Answer confidence** = weighted usefulness for *your question* (RAG-eval style, no extra LLM call):
+| Dimension | Role |
+|-----------|------|
+| Groundedness | IDs/claims supported by context; honest abstention scores high here |
+| Answer relevance | Question ↔ answer fit (lexical + embedding similarity) |
+| Context relevance | Question ↔ retrieved docs fit |
+| Retrieval support | Dense match tightness (distance) |
+| Abstention quality | Did we refuse when context was weak (good) or answer anyway (bad)? |
+
+If the model correctly says “insufficient evidence,” **overall answer confidence stays low**
+(you didn’t get an answer), while **abstention quality** can still be high.
+"""
+        )
+        if result.get("answer_confidence_reason"):
+            st.caption(result["answer_confidence_reason"])
+        if result.get("coverage_reason"):
+            st.caption(f"Coverage reason: {result['coverage_reason']}")
+
+    st.markdown(
+        '<div class="panel"><p class="panel-title">System output</p></div>',
+        unsafe_allow_html=True,
+    )
     st.markdown(result.get("answer") or "_(empty)_")
+
+    web_meta = result.get("web_fallback") or {}
+    if web_fb or web_meta.get("used") or web_meta.get("triggered") or web_meta.get(
+        "error"
+    ):
+        st.markdown(
+            '<p class="section-label">Web fallback (demo)</p>',
+            unsafe_allow_html=True,
+        )
+        if not web_meta.get("triggered") and not web_meta.get("used"):
+            st.info(
+                "Web fallback was enabled, but the local KB looked strong enough — "
+                "so no web search ran. Try an Out-of-KB example button."
+            )
+        bits = [
+            f"triggered={web_meta.get('triggered')}",
+            f"used={web_meta.get('used')}",
+            f"reason={web_meta.get('reason')}",
+            f"quality={web_meta.get('quality')}",
+            f"ingested={web_meta.get('ingested')}",
+            f"hits={web_meta.get('hits')}",
+            f"provider={web_meta.get('provider')}",
+        ]
+        st.caption(" · ".join(str(b) for b in bits))
+        if web_meta.get("error"):
+            st.warning(web_meta["error"])
+        sources = web_meta.get("sources") or []
+        if sources:
+            for s in sources[:6]:
+                flag = "allowlisted" if s.get("allowlisted") == "1" else "other"
+                st.markdown(
+                    f"- ({flag}) [{s.get('title') or s.get('url')}]({s.get('url')})"
+                )
 
     c_cov, c_need = st.columns(2)
     with c_cov:

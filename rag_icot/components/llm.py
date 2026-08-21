@@ -103,7 +103,7 @@ class GroqBackend:
 
         self.model_name = model_name or os.getenv(
             "GROQ_MODEL",
-            "llama-3.1-8b-instant",
+            "openai/gpt-oss-20b",
         )
         self.client = Groq(api_key=api_key)
         self.max_retries = max_retries
@@ -112,20 +112,33 @@ class GroqBackend:
 
     def generate(self, prompt: str) -> str:
         last_error = None
+        # gpt-oss models on Groq may try built-in tools (browser.search) unless
+        # we force text-only + tool_choice=none.
+        system = (
+            "You are a text-only assistant. Never call tools, functions, or "
+            "browsers. Never emit tool-call JSON. Reply with plain text or the "
+            "exact JSON the user requested."
+        )
 
         for attempt in range(self.max_retries):
             try:
+                user_content = prompt
+                if attempt > 0:
+                    user_content = (
+                        "IMPORTANT: Do not call any tools. Answer directly.\n\n"
+                        + prompt
+                    )
                 response = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=[
-                        {
-                            "role": "user",
-                            "content": prompt,
-                        }
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user_content},
                     ],
                     temperature=0.2,
+                    tool_choice="none",
                 )
-                return response.choices[0].message.content
+                content = response.choices[0].message.content
+                return content if content is not None else ""
 
             except self._RateLimitError as exc:
                 last_error = exc
@@ -138,6 +151,17 @@ class GroqBackend:
 
             except self._APIStatusError as exc:
                 last_error = exc
+                msg = str(exc).lower()
+                # Model tried a built-in tool despite tool_choice=none — retry.
+                if getattr(exc, "status_code", None) == 400 and (
+                    "tool" in msg or "tool_use_failed" in msg
+                ):
+                    print(
+                        f"Groq tool-call refused (attempt "
+                        f"{attempt + 1}/{self.max_retries}); retrying text-only..."
+                    )
+                    time.sleep(1)
+                    continue
                 if attempt >= self.max_retries - 1:
                     raise
                 delay = self.base_delay_seconds
